@@ -193,6 +193,53 @@ const STAND_IN_CLASSES_SOURCE = `
           }
       }
   }
+
+  class MainMenuButton
+  {
+      m_title = "";
+      m_menu_event = 0;
+      m_menu_event_arg = null;
+      m_extra_padding = 0.0;
+      m_next_control = null;
+      m_previous_control = null;
+      constructor(title, menu_event, menu_event_arg = null)
+      {
+          m_title = title;
+          m_menu_event = menu_event;
+          m_menu_event_arg = menu_event_arg;
+      }
+      function weakref()
+      {
+          return this;
+      }
+  }
+
+  class MainSubMenu
+  {
+      m_menu_type = 0;
+      m_buttons = null;
+      constructor(menu_type)
+      {
+          m_menu_type = menu_type;
+          m_buttons = [];
+          if (menu_type == 1)
+          {
+              add_button("Continue", 6);
+              add_button("Options", 3);
+              add_button("How to Play", 31);
+              local b = add_button("Save & Quit", 2);
+              b.m_extra_padding = 100.0;
+          }
+          layout_buttons();
+      }
+      function add_button(title, menu_event, menu_event_arg = null, tooltip_text_id = null)
+      {
+          local b = ::__env.MainMenuButton(title, menu_event, menu_event_arg);
+          m_buttons.push(b);
+          return b;
+      }
+      function layout_buttons() {}
+  }
 `;
 
 function buildStandInAdapter({ installOnRoot = false } = {}) {
@@ -275,13 +322,33 @@ function buildStandInAdapter({ installOnRoot = false } = {}) {
     __env.ListWindow <- ListWindow;
     __env.HUDInteractPopup <- HUDInteractPopup;
     __env.HUDInGameMenuManager <- HUDInGameMenuManager;
+    __env.MainMenuButton <- MainMenuButton;
+    __env.MainSubMenu <- MainSubMenu;
     __env.g_difficulty <- 1;
     __env.g_endless <- false;
     __env.g_play_mode <- 0;
     __env.g_local_coop <- false;
     __env.g_level_screen <- null;
+    __env.g_top_screen_removed <- false;
+    __env.g_game <- {
+        remove_top_game_screen = function() { ::__env.g_top_screen_removed = true; }
+    };
     __env.get_play_mode <- function() { return ::__env.g_play_mode; };
     __env.is_local_coop_play_mode <- function() { return ::__env.g_local_coop; };
+    __env.is_endless_mode <- function() {
+        if (::__env.g_level_screen != null && ::__env.g_level_screen.m_world != null)
+        {
+            return ::__env.g_level_screen.m_world.get_game_mode() == 2;
+        }
+        return ::__env.g_endless;
+    };
+    __env.get_difficulty <- function() {
+        if (::__env.g_level_screen != null && ::__env.g_level_screen.m_world != null && ::__env.g_level_screen.m_world.m_world_state != null)
+        {
+            return ::__env.g_level_screen.m_world.m_world_state.m_game_difficulty;
+        }
+        return ::__env.g_difficulty;
+    };
     __env.gparams <- {
         reward_starting_coins = 50,
         disease_food_poisoning_counter = function() { return 3; },
@@ -345,6 +412,31 @@ function buildStandInAdapter({ installOnRoot = false } = {}) {
             {
                 m_game_state = 5;
                 ::__env.GameEnd.spawn(m_overlay_room);
+            }
+        }
+
+        function begin_level_transition_to_game_mode(game_mode)
+        {
+            if (m_game_state == 0)
+            {
+                m_switch_to_game_mode = game_mode;
+                m_game_state = 1;
+            }
+        }
+
+        function complete_level_transition_to_game_mode()
+        {
+            if (m_game_state == 1 && m_switch_to_game_mode != 0)
+            {
+                foreach (p in ::__env.g_level_screen.m_players)
+                {
+                    if (p != null && p.is_live_player() && p.m_hero != null)
+                    {
+                        p.m_hero.m_last_level_index = -1;
+                        p.m_hero.save_hero_data_to_world();
+                    }
+                }
+                m_game_state = 3;
             }
         }
 
@@ -421,6 +513,32 @@ function buildStandInAdapter({ installOnRoot = false } = {}) {
                     m_gparam_level_type = select_campaign_level_type_from_level_index(m_gparam_level_index);
                     m_gparam_level_challenge = 0;
                 }
+            }
+            else if (m_gparam_game_mode == 2)
+            {
+                m_gparam_level_index = m_gparam_level_index + 1;
+                if (m_gparam_level_index == 13)
+                {
+                    m_gparam_level_type = "boss";
+                    m_gparam_level_challenge = 2;
+                }
+                else
+                {
+                    m_gparam_level_type = "endless_normal";
+                    m_gparam_level_challenge = 0;
+                }
+            }
+            if (m_gparam_game_mode == 0 && world_state.m_switch_to_game_mode == 2)
+            {
+                m_gparam_game_mode = 2;
+                m_gparam_level_index = 0;
+                m_gparam_level_type = "forest";
+                m_gparam_level_challenge = 1;
+                world_state.m_game_difficulty = 2;
+            }
+            if (m_gparam_level_challenge == 2)
+            {
+                world_state.m_game_difficulty = 3;
             }
             m_gparam_generate_difficulty = world_state.m_game_difficulty;
             assert(m_gparam_used_room_types_working_copy != null);
@@ -617,6 +735,7 @@ function buildStandInAdapter({ installOnRoot = false } = {}) {
             {
                 if (entry.m_key == "lives") m_lives = entry.as_string(0);
                 if (entry.m_key == "max_health") m_maximum_health = entry.as_string(0);
+                if (entry.m_key == "health") m_health = entry.as_string(0);
                 if (entry.m_key == "coins") m_coins = entry.as_string(0);
                 if (entry.m_key == "souls_to_collect") m_souls_to_collect = entry.as_string(0);
                 if (entry.m_key == "last_level_index") m_last_level_index = entry.as_string(0);
@@ -639,6 +758,10 @@ function buildStandInAdapter({ installOnRoot = false } = {}) {
                 local pd = ::__env.ProfileData();
                 pd.load_from_string(hdata);
                 initialize_from_hero_data(pd);
+            }
+            if (m_last_level_index != "" + level_index && ::__env.get_difficulty() == 0)
+            {
+                m_health = m_maximum_health;
             }
             if (m_last_level_index != "" + level_index && world.is_shadow_world())
             {
@@ -729,7 +852,7 @@ function buildStandInAdapter({ installOnRoot = false } = {}) {
             }
             else if (game_over)
             {
-                if (::__env.g_difficulty == 0 && m_checkpoint_blob != null)
+                if (::__env.get_difficulty() == 0 && m_checkpoint_blob != null)
                 {
                     what = 1;
                 }
@@ -780,7 +903,7 @@ function buildStandInAdapter({ installOnRoot = false } = {}) {
 
   if (!installOnRoot) {
     // Remove classes from root so standalone targetEnv proves zero hidden root dependency
-    for (const k of ["ProfileDataEntry", "ProfileData", "Loot", "HeroInteractState", "NPC", "InputEvent", "CheatPanelCell", "ListWindow", "HUDInteractPopup", "HUDInGameMenuManager", "IngameCinematicCommand", "WorldState", "World", "Hero", "LevelScreen"]) {
+    for (const k of ["ProfileDataEntry", "ProfileData", "Loot", "HeroInteractState", "NPC", "InputEvent", "CheatPanelCell", "ListWindow", "HUDInteractPopup", "HUDInGameMenuManager", "MainMenuButton", "MainSubMenu", "IngameCinematicCommand", "WorldState", "World", "Hero", "LevelScreen"]) {
       vm.root.slots.delete(k);
     }
     const carryover = vm.root.get("CampaignCarryover");
@@ -1327,4 +1450,202 @@ test("Seam 2E: Alchemist Reset in Starting Camp shows prompt on Tim (m_npc == 1)
     0,
     ["mechanical_arms", "nightcrawlers_eye"],
   ]);
+});
+
+test("Seam 2F: Endless Dungeon preserves Starting Camp difficulty (Casual checkpoint respawn vs Normal+ permadeath, including across floor 13) and adds a Pause Menu Return to Camp button that carries Hero Loadout and Run Stats back to Starting Camp", () => {
+  const { vm } = buildStandInAdapter({ installOnRoot: false });
+
+  const res = vm.runSource(`
+    // 1. Enter Endless Dungeon from Starting Camp on Casual (0) -> difficulty stays 0 (not overwritten to 2)
+    local lsCasual = __env.LevelScreen();
+    lsCasual.m_world = __env.World();
+    lsCasual.m_world.m_gparam_game_mode = 0;
+    lsCasual.m_world.m_gparam_level_index = 0;
+    lsCasual.m_world.m_world_state = __env.WorldState();
+    lsCasual.m_world.m_world_state.m_game_difficulty = 0; // Casual
+    __env.Loot.initialize_world_loot(lsCasual.m_world.m_world_state);
+    __env.g_level_screen = lsCasual;
+
+    local h0 = __env.Hero();
+    h0.m_player_index = 0;
+    h0.m_coins = 888;
+    h0.m_lives = 2;
+    h0.m_maximum_health = 160;
+    h0.m_souls_to_collect = 5;
+    h0.m_items = [{ m_def = { _name = "mechanical_arms" } }];
+    lsCasual.m_players = [{ m_hero = h0, is_live_player = function() { return true; } }];
+
+    // Step into Endless portal (m_switch_to_game_mode = 2)
+    lsCasual.m_world.m_world_state.begin_level_transition_to_game_mode(2);
+    lsCasual.m_world.m_world_state.complete_level_transition_to_game_mode();
+    h0 = null;
+    lsCasual.finish_level();
+
+    local endlessMode0 = lsCasual.m_world.m_gparam_game_mode;
+    local endlessLevel0 = lsCasual.m_world.m_gparam_level_index;
+    local endlessDiff0 = lsCasual.m_world.m_world_state.m_game_difficulty;
+    local endlessGenDiff0 = lsCasual.m_world.m_gparam_generate_difficulty;
+
+    // Die on Endless floor 0 on Casual -> respawns at checkpoint (unpack_checkpoint_state -> start_next_level)
+    lsCasual.m_actions = [];
+    lsCasual.m_world.m_world_state.m_game_state = 4; // Game Over
+    lsCasual.finish_level();
+    local casualDeathActions = clone lsCasual.m_actions;
+    local endlessDiffAfterRespawn = lsCasual.m_world.m_world_state.m_game_difficulty;
+
+    // Advance to Endless floor 13 (m_gparam_level_challenge == 2) -> difficulty still stays 0 (not overwritten to 3)
+    lsCasual.m_world.m_gparam_level_index = 12;
+    lsCasual.m_world.m_gparam_used_room_types_working_copy = ["room_a"];
+    lsCasual.m_world.switch_to_next_level(lsCasual.m_world.m_world_state);
+    local endlessLevel13 = lsCasual.m_world.m_gparam_level_index;
+    local endlessChallenge13 = lsCasual.m_world.m_gparam_level_challenge;
+    local endlessDiff13 = lsCasual.m_world.m_world_state.m_game_difficulty;
+
+    // 2. Pause Menu in Endless Dungeon shows "Return to Camp" above "Save & Quit", while Campaign Pause Menu does not
+    local hEndless = __env.Hero();
+    hEndless.m_player_index = 0;
+    hEndless.m_coins = 999;
+    hEndless.m_lives = 3;
+    hEndless.m_maximum_health = 200;
+    hEndless.m_health = 50; // Damaged hero in Endless on Casual (0) -> restored to full HP (200) on entering next floor
+    hEndless.m_souls_to_collect = 8;
+    hEndless.m_items = [{ m_def = { _name = "molten_mittens" } }];
+    lsCasual.m_players = [{ m_hero = hEndless, is_live_player = function() { return true; } }];
+
+    local pauseEndless = __env.MainSubMenu(1);
+    local endlessBtnTitles = [];
+    local returnBtn = null;
+    foreach (b in pauseEndless.m_buttons)
+    {
+        endlessBtnTitles.push(b.m_title);
+        if (b.m_title == "Return to Camp")
+        {
+            returnBtn = b;
+        }
+    }
+
+    // Invoke "Return to Camp" button callback
+    __env.g_top_screen_removed = false;
+    returnBtn.m_menu_event_arg.call(pauseEndless);
+    local topScreenRemoved = __env.g_top_screen_removed;
+    local switchModePending = lsCasual.m_world.m_world_state.m_switch_to_game_mode;
+    lsCasual.m_world.m_world_state.complete_level_transition_to_game_mode();
+    hEndless = null;
+    lsCasual.finish_level();
+
+    local campHero = __env.Hero();
+    campHero.spawn_on_level(lsCasual.m_world, lsCasual.m_world.m_gparam_level_index);
+    local modeAfterReturn = lsCasual.m_world.m_gparam_game_mode;
+    local levelIdxAfterReturn = lsCasual.m_world.m_gparam_level_index;
+    local levelTypeAfterReturn = lsCasual.m_world.m_gparam_level_type;
+    local diffAfterReturn = lsCasual.m_world.m_world_state.m_game_difficulty;
+    local modsPoolAfterReturn = lsCasual.m_world.m_world_state.m_mods_pool;
+
+    // Pause menu in Campaign mode (mode 0) does NOT show "Return to Camp"
+    local pauseCampaign = __env.MainSubMenu(1);
+    local campaignBtnTitles = [];
+    foreach (b in pauseCampaign.m_buttons)
+    {
+        campaignBtnTitles.push(b.m_title);
+    }
+
+    // 3. Enter Endless Dungeon on Normal (1) and die -> permadeath via start_game
+    lsCasual.m_world.m_gparam_used_room_types_working_copy = clone lsCasual.m_world.m_gparam_used_room_types;
+    lsCasual.m_world.m_world_state.m_game_difficulty = 1;
+    lsCasual.m_world.m_world_state.begin_level_transition_to_game_mode(2);
+    lsCasual.m_world.m_world_state.complete_level_transition_to_game_mode();
+    lsCasual.finish_level();
+    local normalEndlessDiff = lsCasual.m_world.m_world_state.m_game_difficulty;
+    lsCasual.m_actions = [];
+    lsCasual.m_world.m_world_state.m_game_state = 4;
+    lsCasual.finish_level();
+    local normalEndlessDeathActions = lsCasual.m_actions;
+
+    lsCasual = null;
+    __env.g_level_screen = null;
+
+    return [
+      endlessMode0,
+      endlessLevel0,
+      endlessDiff0,
+      endlessGenDiff0,
+      casualDeathActions,
+      endlessDiffAfterRespawn,
+      endlessLevel13,
+      endlessChallenge13,
+      endlessDiff13,
+      endlessBtnTitles,
+      campaignBtnTitles,
+      topScreenRemoved,
+      switchModePending,
+      modeAfterReturn,
+      levelIdxAfterReturn,
+      levelTypeAfterReturn,
+      diffAfterReturn,
+      campHero.m_coins,
+      campHero.m_lives,
+      campHero.m_health,
+      campHero.m_maximum_health,
+      campHero.m_souls_to_collect,
+      modsPoolAfterReturn,
+      normalEndlessDiff,
+      normalEndlessDeathActions
+    ];
+  `);
+
+  const [
+    endlessMode0,
+    endlessLevel0,
+    endlessDiff0,
+    endlessGenDiff0,
+    casualDeathActions,
+    endlessDiffAfterRespawn,
+    endlessLevel13,
+    endlessChallenge13,
+    endlessDiff13,
+    endlessBtnTitles,
+    campaignBtnTitles,
+    topScreenRemoved,
+    switchModePending,
+    modeAfterReturn,
+    levelIdxAfterReturn,
+    levelTypeAfterReturn,
+    diffAfterReturn,
+    campCoins,
+    campLives,
+    campHp,
+    campMaxHp,
+    campSouls,
+    modsPoolAfterReturn,
+    normalEndlessDiff,
+    normalEndlessDeathActions,
+  ] = vm.unwrapToJS(res);
+
+  assert.equal(endlessMode0, 2);
+  assert.equal(endlessLevel0, 0);
+  assert.equal(endlessDiff0, 0);
+  assert.equal(endlessGenDiff0, 0);
+  assert.deepEqual(casualDeathActions, ["unpack_checkpoint_state", "stop_game", "start_next_level"]);
+  assert.equal(endlessDiffAfterRespawn, 0);
+  assert.equal(endlessLevel13, 13);
+  assert.equal(endlessChallenge13, 2);
+  assert.equal(endlessDiff13, 0);
+
+  assert.deepEqual(endlessBtnTitles, ["Continue", "Options", "How to Play", "Return to Camp", "Save & Quit"]);
+  assert.deepEqual(campaignBtnTitles, ["Continue", "Options", "How to Play", "Save & Quit"]);
+  assert.equal(topScreenRemoved, true);
+  assert.equal(switchModePending, -1);
+  assert.equal(modeAfterReturn, 0);
+  assert.equal(levelIdxAfterReturn, 0);
+  assert.equal(levelTypeAfterReturn, "forest");
+  assert.equal(diffAfterReturn, 0);
+  assert.equal(campCoins, "999");
+  assert.equal(campLives, "3");
+  assert.equal(campHp, "200");
+  assert.equal(campMaxHp, "200");
+  assert.equal(campSouls, "8");
+  assert.deepEqual(modsPoolAfterReturn, ["mechanical_arms", "nightcrawlers_eye"]);
+
+  assert.equal(normalEndlessDiff, 1);
+  assert.deepEqual(normalEndlessDeathActions, ["stop_game", "start_game"]);
 });

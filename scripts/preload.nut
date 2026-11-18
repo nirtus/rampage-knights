@@ -289,6 +289,54 @@ class CampaignCarryover
         return entity != null && "NPC" in root && entity instanceof root.NPC && entity.m_npc == 1;
     }
 
+    static function _is_endless_run_active(root)
+    {
+        if ("is_endless_mode" in root)
+        {
+            return root.is_endless_mode();
+        }
+        if ("g_level_screen" in root && root.g_level_screen != null && root.g_level_screen.m_world != null)
+        {
+            return root.g_level_screen.m_world.get_game_mode() == 2;
+        }
+        return false;
+    }
+
+    static function _relink_menu_buttons(buttons)
+    {
+        local count = buttons.len();
+        for (local i = 0; i < count; i++)
+        {
+            local prev_idx = i - 1;
+            if (i == 0)
+            {
+                prev_idx = count - 1;
+            }
+            local next_idx = (i + 1) % count;
+            local prev = buttons[prev_idx];
+            local cur = buttons[i];
+            local next = buttons[next_idx];
+            prev.m_next_control = cur.weakref();
+            next.m_previous_control = cur.weakref();
+        }
+    }
+
+    static function _return_to_starting_camp(root)
+    {
+        if ("play_game_sound" in root)
+        {
+            root.play_game_sound("menu_confirm");
+        }
+        if ("g_game" in root && root.g_game != null && "remove_top_game_screen" in root.g_game)
+        {
+            root.g_game.remove_top_game_screen();
+        }
+        if ("g_level_screen" in root && root.g_level_screen != null && root.g_level_screen.m_world != null && root.g_level_screen.m_world.m_world_state != null)
+        {
+            root.g_level_screen.m_world.m_world_state.begin_level_transition_to_game_mode(-1);
+        }
+    }
+
     static function _create_alchemist_cell(root, id, text)
     {
         local cell = root.CheatPanelCell(id, text, true);
@@ -453,8 +501,14 @@ class CampaignCarryover
         local base_switch_to_next_level = root.World.switch_to_next_level;
         root.World.switch_to_next_level <- function(world_state)
         {
-            if (::CampaignCarryover._is_finite_campaign_mode(m_gparam_game_mode) && m_gparam_level_index >= 9 && world_state != null && world_state.m_switch_to_game_mode == 0)
+            local is_campaign_wrap = ::CampaignCarryover._is_finite_campaign_mode(m_gparam_game_mode) && m_gparam_level_index >= 9 && world_state != null && world_state.m_switch_to_game_mode == 0;
+            local is_endless_return = m_gparam_game_mode == 2 && world_state != null && world_state.m_switch_to_game_mode == -1;
+            if (is_campaign_wrap || is_endless_return)
             {
+                if (is_endless_return)
+                {
+                    m_gparam_game_mode = 0;
+                }
                 m_gparam_level_index = 0;
                 m_gparam_level_type = "forest";
                 m_gparam_level_challenge = 0;
@@ -474,7 +528,18 @@ class CampaignCarryover
                 ::CampaignCarryover._refresh_world_state_for_loop(root, world_state);
                 return;
             }
-            return base_switch_to_next_level.call(this, world_state);
+            local prev_difficulty = null;
+            if (world_state != null)
+            {
+                prev_difficulty = world_state.m_game_difficulty;
+            }
+            local res = base_switch_to_next_level.call(this, world_state);
+            if (m_gparam_game_mode == 2 && world_state != null && prev_difficulty != null)
+            {
+                world_state.m_game_difficulty = prev_difficulty;
+                m_gparam_generate_difficulty = prev_difficulty;
+            }
+            return res;
         };
 
         local base_check_can_pick_item = root.Hero.check_can_pick_item;
@@ -586,6 +651,37 @@ class CampaignCarryover
                     }
                 }
                 return base_update_input_events.call(this);
+            };
+        }
+
+        if ("MainSubMenu" in root && root.MainSubMenu != null && "layout_buttons" in root.MainSubMenu)
+        {
+            local base_layout_buttons = root.MainSubMenu.layout_buttons;
+            root.MainSubMenu.layout_buttons <- function()
+            {
+                if (m_menu_type == 1 && m_buttons != null && m_buttons.len() > 0 && ::CampaignCarryover._is_endless_run_active(root))
+                {
+                    local has_return_btn = false;
+                    foreach (b in m_buttons)
+                    {
+                        if (b != null && b.m_menu_event == 5)
+                        {
+                            has_return_btn = true;
+                        }
+                    }
+                    if (!has_return_btn)
+                    {
+                        local save_btn = m_buttons.pop();
+                        local return_btn = add_button("Return to Camp", 5, function() {
+                            ::CampaignCarryover._return_to_starting_camp(root);
+                        });
+                        return_btn.m_extra_padding = save_btn.m_extra_padding;
+                        save_btn.m_extra_padding = 0.0;
+                        m_buttons.push(save_btn);
+                        ::CampaignCarryover._relink_menu_buttons(m_buttons);
+                    }
+                }
+                return base_layout_buttons.call(this);
             };
         }
     }
