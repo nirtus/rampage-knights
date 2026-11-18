@@ -1,0 +1,618 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Architecture review for Rampage Knights — Modding CRUD &amp; Seamless UI</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script type="module">
+      import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+      mermaid.initialize({
+        startOnLoad: true,
+        theme: "neutral",
+        securityLevel: "loose",
+        flowchart: { curve: "basis", htmlLabels: true }
+      });
+    </script>
+    <style>
+      .seam { stroke-dasharray: 5 4; }
+      .seam-border { border-style: dashed; }
+      .leak { stroke: #dc2626; }
+      .deep { background: linear-gradient(135deg, #0f172a, #1e293b); }
+    </style>
+  </head>
+  <body class="bg-stone-50 text-slate-900 font-sans antialiased">
+    <main class="max-w-6xl mx-auto px-6 py-12 space-y-12">
+      <!-- Header & Legend -->
+      <header class="border-b border-stone-200 pb-8 flex flex-col md:flex-row md:items-end md:justify-between gap-6">
+        <div>
+          <p class="text-xs uppercase tracking-widest text-stone-500 font-semibold">Architecture Review · 2026-11-17</p>
+          <h1 class="font-serif text-3xl md:text-4xl text-slate-900 mt-1 tracking-tight">
+            Rampage Knights <span class="text-stone-400 font-light">/</span> Modding CRUD &amp; Seamless UI
+          </h1>
+        </div>
+        <div class="flex flex-wrap items-center gap-4 text-xs text-slate-600 bg-white border border-stone-200 rounded-lg px-4 py-2.5 shadow-sm">
+          <span class="flex items-center gap-2">
+            <span class="inline-block w-4 h-3 border border-slate-400 bg-white rounded-sm"></span>
+            Module
+          </span>
+          <span class="flex items-center gap-2">
+            <span class="inline-block w-5 border-t-2 border-dashed border-slate-500"></span>
+            Seam
+          </span>
+          <span class="flex items-center gap-2">
+            <span class="inline-block w-5 border-t-2 border-red-600"></span>
+            Leakage
+          </span>
+          <span class="flex items-center gap-2">
+            <span class="inline-block w-4 h-3 rounded-sm deep border-2 border-slate-900"></span>
+            Deep module
+          </span>
+        </div>
+      </header>
+
+      <!-- Candidates -->
+      <section id="candidates" class="space-y-10">
+
+        <!-- CANDIDATE 1 -->
+        <article id="candidate-1" class="bg-white rounded-xl border border-stone-200 shadow-sm p-6 md:p-8 space-y-6">
+          <div class="flex flex-wrap items-start justify-between gap-4">
+            <div class="space-y-2">
+              <div class="flex flex-wrap items-center gap-2">
+                <span class="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-900 border border-emerald-300">Strong</span>
+                <span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-stone-100 text-stone-700 border border-stone-300">local-substitutable</span>
+              </div>
+              <h2 class="font-serif text-2xl text-slate-900">1. Collapse Script &amp; Def Bootstrap into a Mod Catalog Module</h2>
+            </div>
+            <span class="text-xs font-mono text-stone-400">#candidate-1</span>
+          </div>
+
+          <div class="bg-stone-50 border border-stone-200 rounded-lg px-4 py-3 font-mono text-sm text-slate-700 flex flex-wrap gap-x-4 gap-y-1">
+            <span>scripts/constants*.nut.bin</span>
+            <span>scripts/main.nut.bin</span>
+            <span>scripts/engine/defs.nut.bin</span>
+            <span>scripts/defs.nut.bin</span>
+            <span>data/def.txt.bin</span>
+            <span>scripts/skins.nut.bin</span>
+            <span>scripts/preload.nut.bin</span>
+          </div>
+
+          <!-- Before / After Visual: Mermaid Mess vs Hand-Built Deep Module Collapse -->
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+            <!-- BEFORE -->
+            <div class="rounded-lg border border-stone-200 bg-stone-50/60 p-4 flex flex-col justify-between min-h-[340px]">
+              <div class="flex items-center justify-between mb-2">
+                <span class="text-xs uppercase tracking-wider font-semibold text-red-700">Before · Scattered Imperative Bootstrap</span>
+                <span class="text-[11px] text-stone-500">7 shallow modules, global mutation</span>
+              </div>
+              <div class="rounded border border-stone-200 bg-white p-2 flex-1 flex items-center justify-center overflow-hidden">
+                <pre class="mermaid w-full">
+flowchart TB
+  EXE["rampage_knights.exe"] --> C["constants*.nut.bin<br/>(getconsttable lock)"]
+  EXE --> M["main.nut.bin"]
+  M --> ED["engine/defs.nut.bin"]
+  M --> DD["data/def.txt.bin<br/>(~150 load_defs)"]
+  DD -.leak.-> G["Global g_*_defs / g_objects"]
+  C -.leak.-> IC["initialize_item_stats_cache()"]
+  G -.leak.-> IC
+  M --> SK["precompiled_skins.txt.bin<br/>(static expansion)"]
+  SK -.leak.-> PR["PreloadResourcesScreen"]
+  G -.leak.-> PR
+  classDef leak stroke:#dc2626,stroke-width:2px,color:#991b1b;
+  class C,DD,G,IC,SK leak
+                </pre>
+              </div>
+            </div>
+
+            <!-- AFTER -->
+            <div class="rounded-lg border border-stone-200 bg-stone-50/60 p-4 flex flex-col justify-between min-h-[340px]">
+              <div class="flex items-center justify-between mb-2">
+                <span class="text-xs uppercase tracking-wider font-semibold text-emerald-800">After · Deep Mod Catalog Module</span>
+                <span class="text-[11px] text-stone-500">1 CRUD + reload interface</span>
+              </div>
+              <div class="rounded border border-stone-200 bg-white p-4 flex-1 flex flex-col justify-between">
+                <!-- Callers -->
+                <div class="grid grid-cols-3 gap-2 text-center">
+                  <div class="border border-slate-300 rounded py-1.5 px-2 text-[11px] uppercase tracking-wider text-slate-700 bg-stone-50">main.nut Boot</div>
+                  <div class="border border-slate-300 rounded py-1.5 px-2 text-[11px] uppercase tracking-wider text-slate-700 bg-stone-50">Mod Browser UI</div>
+                  <div class="border border-slate-300 rounded py-1.5 px-2 text-[11px] uppercase tracking-wider text-slate-700 bg-stone-50">Lobby Sync</div>
+                </div>
+
+                <!-- External Seam + Narrow Interface -->
+                <div class="border-t-2 border-dashed border-slate-400 my-2 relative">
+                  <span class="bg-white px-2 text-[10px] uppercase tracking-widest text-slate-500 absolute -top-2 left-3">External Seam · Small CRUD Interface</span>
+                </div>
+
+                <!-- Deep Module -->
+                <div class="deep text-white rounded-lg border-2 border-slate-950 p-3.5 space-y-2.5 shadow-md">
+                  <div class="flex items-center justify-between">
+                    <span class="text-xs uppercase tracking-wider font-bold text-emerald-300">ModCatalog Module</span>
+                    <span class="font-mono text-[11px] text-slate-300">list · create · update · remove · apply</span>
+                  </div>
+                  <div class="grid grid-cols-2 gap-1.5 text-[11px] text-slate-300/90">
+                    <div class="bg-slate-800/80 border border-slate-700 rounded px-2 py-1">Base snapshot &amp; clean rollback</div>
+                    <div class="bg-slate-800/80 border border-slate-700 rounded px-2 py-1">compilestring() DSL &amp; .nut loader</div>
+                    <div class="bg-slate-800/80 border border-slate-700 rounded px-2 py-1">Incremental wildcard skin expand</div>
+                    <div class="bg-slate-800/80 border border-slate-700 rounded px-2 py-1">Item cache &amp; resource re-index</div>
+                  </div>
+                </div>
+
+                <!-- Internal Seam + Two Adapters -->
+                <div class="border-t-2 border-dashed border-slate-400 my-2 relative">
+                  <span class="bg-white px-2 text-[10px] uppercase tracking-widest text-slate-500 absolute -top-2 left-3">Internal Storage Seam</span>
+                </div>
+                <div class="grid grid-cols-2 gap-2 text-center">
+                  <div class="border border-slate-400 rounded py-1.5 px-2 text-[11px] uppercase tracking-wider text-slate-800 bg-stone-50">User Dir File Adapter</div>
+                  <div class="border border-emerald-400 rounded py-1.5 px-2 text-[11px] uppercase tracking-wider text-emerald-900 bg-emerald-50">In-Memory Test Adapter</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-6 pt-2 border-t border-stone-100">
+            <div>
+              <h3 class="text-xs uppercase tracking-wider font-semibold text-stone-500 mb-1">Problem</h3>
+              <p class="text-sm text-slate-700">Content registration mutates global tables across seven one-shot bootstrap files, leaving no seam to create, toggle, reorder, or delete mods without editing base <code class="font-mono text-xs">.bin</code> files.</p>
+            </div>
+            <div>
+              <h3 class="text-xs uppercase tracking-wider font-semibold text-stone-500 mb-1">Solution</h3>
+              <p class="text-sm text-slate-700">Consolidate manifest CRUD, <code class="font-mono text-xs">compilestring()</code> script evaluation, reversible <code class="font-mono text-xs">g_*_defs</code> table overlays, and skin/item cache rebuilds inside one deep <code class="font-mono text-xs">ModCatalog</code> module.</p>
+            </div>
+            <div>
+              <h3 class="text-xs uppercase tracking-wider font-semibold text-stone-500 mb-1">Wins</h3>
+              <ul class="text-sm text-slate-800 space-y-1 list-disc list-inside">
+                <li>Locality: CRUD concentrates in one module</li>
+                <li>Leverage: one interface feeds four callers</li>
+                <li>Two adapters make mod CRUD testable</li>
+                <li>Runtime compilestring() skips .bin rebuilds</li>
+              </ul>
+            </div>
+          </div>
+        </article>
+
+        <!-- CANDIDATE 2 -->
+        <article id="candidate-2" class="bg-white rounded-xl border border-stone-200 shadow-sm p-6 md:p-8 space-y-6">
+          <div class="flex flex-wrap items-start justify-between gap-4">
+            <div class="space-y-2">
+              <div class="flex flex-wrap items-center gap-2">
+                <span class="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-900 border border-emerald-300">Strong</span>
+                <span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-stone-100 text-stone-700 border border-stone-300">in-process</span>
+              </div>
+              <h2 class="font-serif text-2xl text-slate-900">2. Unify Menu &amp; Camp Widget Silos into One Mod Browser UI Module</h2>
+            </div>
+            <span class="text-xs font-mono text-stone-400">#candidate-2</span>
+          </div>
+
+          <div class="bg-stone-50 border border-stone-200 rounded-lg px-4 py-3 font-mono text-sm text-slate-700 flex flex-wrap gap-x-4 gap-y-1">
+            <span>scripts/menu/Menu.nut.bin</span>
+            <span>scripts/menu/MenuWidget.nut.bin</span>
+            <span>scripts/menu/MainMenu.nut.bin</span>
+            <span>scripts/menu/GameMenu.nut.bin</span>
+            <span>scripts/menu/ListWindow.nut.bin</span>
+            <span>scripts/hud/HUD_ingame_menu.nut.bin</span>
+            <span>data/ui/menu.txt.bin</span>
+            <span>data/ui/ui.txt.bin</span>
+          </div>
+
+          <!-- Before / After Visual: Split Silos vs Unified Deep UI Module with 2 Mount Adapters -->
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+            <!-- BEFORE -->
+            <div class="rounded-lg border border-stone-200 bg-stone-50/60 p-4 flex flex-col justify-between min-h-[340px]">
+              <div class="flex items-center justify-between mb-2">
+                <span class="text-xs uppercase tracking-wider font-semibold text-red-700">Before · Duplicated Out-of-Game &amp; Camp UI Silos</span>
+                <span class="text-[11px] text-stone-500">2 parallel widget trees</span>
+              </div>
+              <div class="rounded border border-stone-200 bg-white p-4 flex-1 flex flex-col justify-between relative">
+                <div class="grid grid-cols-2 gap-4 flex-1">
+                  <!-- Silo A -->
+                  <div class="border-2 border-red-200 bg-red-50/30 rounded-lg p-3 flex flex-col justify-between">
+                    <div class="text-xs uppercase tracking-wider font-bold text-slate-800">MenuScreen Silo</div>
+                    <div class="space-y-1.5 text-[11px] font-mono text-slate-700">
+                      <div class="border border-slate-300 bg-white rounded px-2 py-1">MainMenu / GameMenu</div>
+                      <div class="border border-slate-300 bg-white rounded px-2 py-1">OptionButton / ValueOption</div>
+                      <div class="border border-slate-300 bg-white rounded px-2 py-1">ShowMessageSubMenu</div>
+                      <div class="border border-red-300 bg-red-50 rounded px-2 py-1 text-red-800">Custom focus &amp; hit-test</div>
+                    </div>
+                  </div>
+                  <!-- Silo B -->
+                  <div class="border-2 border-red-200 bg-red-50/30 rounded-lg p-3 flex flex-col justify-between">
+                    <div class="text-xs uppercase tracking-wider font-bold text-slate-800">Camp HUD Silo</div>
+                    <div class="space-y-1.5 text-[11px] font-mono text-slate-700">
+                      <div class="border border-slate-300 bg-white rounded px-2 py-1">HUDInGameMenuManager</div>
+                      <div class="border border-slate-300 bg-white rounded px-2 py-1">ListWindow + InfoScroll</div>
+                      <div class="border border-slate-300 bg-white rounded px-2 py-1">Rune / Class / CheatCell</div>
+                      <div class="border border-red-300 bg-red-50 rounded px-2 py-1 text-red-800">Separate InputEvent loop</div>
+                    </div>
+                  </div>
+                </div>
+                <div class="mt-3 rounded border border-red-300 bg-red-50 px-3 py-2 text-center text-xs text-red-800 font-medium">
+                  Leakage: Mod CRUD UI (Browse · Create · Toggle/Order · Delete) must be built twice
+                </div>
+              </div>
+            </div>
+
+            <!-- AFTER -->
+            <div class="rounded-lg border border-stone-200 bg-stone-50/60 p-4 flex flex-col justify-between min-h-[340px]">
+              <div class="flex items-center justify-between mb-2">
+                <span class="text-xs uppercase tracking-wider font-semibold text-emerald-800">After · One Deep Mod Browser UI Module</span>
+                <span class="text-[11px] text-stone-500">Seamless MainMenu, Pause &amp; Camp Book</span>
+              </div>
+              <div class="rounded border border-stone-200 bg-white p-4 flex-1 flex flex-col justify-between">
+                <!-- Mount Adapters -->
+                <div class="grid grid-cols-2 gap-3 text-center">
+                  <div class="border border-slate-400 bg-stone-50 rounded p-2">
+                    <div class="text-[11px] uppercase tracking-wider font-semibold text-slate-800">SubMenu Mount Adapter</div>
+                    <div class="text-[10px] text-stone-500 font-mono mt-0.5">MainMenu · Pause GameMenu</div>
+                  </div>
+                  <div class="border border-slate-400 bg-stone-50 rounded p-2">
+                    <div class="text-[11px] uppercase tracking-wider font-semibold text-slate-800">Camp Tome Adapter</div>
+                    <div class="text-[10px] text-stone-500 font-mono mt-0.5">HUDInGameMenuManager NPC</div>
+                  </div>
+                </div>
+
+                <div class="border-t-2 border-dashed border-slate-400 my-2 relative">
+                  <span class="bg-white px-2 text-[10px] uppercase tracking-widest text-slate-500 absolute -top-2 left-3">Host Seam · Canvas + InputPacket Events</span>
+                </div>
+
+                <!-- Deep UI Module -->
+                <div class="deep text-white rounded-lg border-2 border-slate-950 p-3.5 space-y-2.5 shadow-md">
+                  <div class="flex items-center justify-between">
+                    <span class="text-xs uppercase tracking-wider font-bold text-emerald-300">ModBrowserUI Module</span>
+                    <span class="font-mono text-[11px] text-slate-300">open(context) · handle_input(pkt)</span>
+                  </div>
+                  <div class="grid grid-cols-4 gap-1.5 text-[10px] text-center font-mono">
+                    <div class="bg-emerald-950/90 border border-emerald-700/70 rounded py-1.5 px-1 text-emerald-200">[C] New Mod<br/>Template</div>
+                    <div class="bg-slate-800 border border-slate-700 rounded py-1.5 px-1 text-slate-200">[R] ListWindow<br/>+ InfoScroll</div>
+                    <div class="bg-slate-800 border border-slate-700 rounded py-1.5 px-1 text-slate-200">[U] Toggle, Order<br/>&amp; dvar Sliders</div>
+                    <div class="bg-rose-950/80 border border-rose-700/70 rounded py-1.5 px-1 text-rose-200">[D] Safe Delete<br/>Modal Prompt</div>
+                  </div>
+                  <div class="text-[11px] text-slate-300 flex justify-between pt-0.5 border-t border-slate-700/80">
+                    <span>Native fonts: <code class="font-mono">orgy</code> / <code class="font-mono">komika</code></span>
+                    <span>Inline <code class="font-mono">%%</code> Gamepad/KB glyphs</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-6 pt-2 border-t border-stone-100">
+            <div>
+              <h3 class="text-xs uppercase tracking-wider font-semibold text-stone-500 mb-1">Problem</h3>
+              <p class="text-sm text-slate-700">Out-of-game <code class="font-mono text-xs">SubMenu</code> widgets and in-game camp <code class="font-mono text-xs">HUDInGameMenuManager</code> cells duplicate focus routing, hit-testing, and option controls across incompatible hierarchies.</p>
+            </div>
+            <div>
+              <h3 class="text-xs uppercase tracking-wider font-semibold text-stone-500 mb-1">Solution</h3>
+              <p class="text-sm text-slate-700">Build one deep <code class="font-mono text-xs">ModBrowserUI</code> module reusing <code class="font-mono text-xs">ListWindow</code>, <code class="font-mono text-xs">InfoScroll</code>, and <code class="font-mono text-xs">TooltipText</code> (<code class="font-mono text-xs">%%</code> icons), mounted through thin adapters in <code class="font-mono text-xs">MainMenu</code>, <code class="font-mono text-xs">GameMenu</code>, and Camp.</p>
+            </div>
+            <div>
+              <h3 class="text-xs uppercase tracking-wider font-semibold text-stone-500 mb-1">Wins</h3>
+              <ul class="text-sm text-slate-800 space-y-1 list-disc list-inside">
+                <li>Locality: focus and scroll live together</li>
+                <li>Leverage: one module, three menu mounts</li>
+                <li>Native Clip skins keep seamless look</li>
+                <li>Tests drive CRUD through one interface</li>
+              </ul>
+            </div>
+          </div>
+        </article>
+
+        <!-- CANDIDATE 3 -->
+        <article id="candidate-3" class="bg-white rounded-xl border border-stone-200 shadow-sm p-6 md:p-8 space-y-6">
+          <div class="flex flex-wrap items-start justify-between gap-4">
+            <div class="space-y-2">
+              <div class="flex flex-wrap items-center gap-2">
+                <span class="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-900 border border-emerald-300">Strong</span>
+                <span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-stone-100 text-stone-700 border border-stone-300">local-substitutable</span>
+              </div>
+              <h2 class="font-serif text-2xl text-slate-900">3. Namespace Save Slots &amp; Profile Feats in a Modded Persistence Module</h2>
+            </div>
+            <span class="text-xs font-mono text-stone-400">#candidate-3</span>
+          </div>
+
+          <div class="bg-stone-50 border border-stone-200 rounded-lg px-4 py-3 font-mono text-sm text-slate-700 flex flex-wrap gap-x-4 gap-y-1">
+            <span>scripts/SaveManager.nut.bin</span>
+            <span>scripts/PlayerProfile.nut.bin</span>
+            <span>scripts/WorldState.nut.bin</span>
+            <span>scripts/LevelScreen.nut.bin</span>
+          </div>
+
+          <!-- Before / After Visual: Mass Diagram -->
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+            <!-- BEFORE -->
+            <div class="rounded-lg border border-stone-200 bg-stone-50/60 p-4 flex flex-col justify-between min-h-[340px]">
+              <div class="flex items-center justify-between mb-2">
+                <span class="text-xs uppercase tracking-wider font-semibold text-red-700">Before · Wide Shallow Save &amp; Profile Surface</span>
+                <span class="text-[11px] text-stone-500">Interface ≈ implementation</span>
+              </div>
+              <div class="rounded border border-stone-200 bg-white p-4 flex-1 flex flex-col justify-between">
+                <!-- Wide Interface Rectangle -->
+                <div class="border-2 border-red-400 bg-red-50/50 rounded p-3 space-y-1.5">
+                  <div class="text-xs uppercase tracking-wider font-bold text-red-900">Wide Caller-Facing Interface</div>
+                  <div class="grid grid-cols-2 gap-1.5 font-mono text-[11px] text-red-900">
+                    <div class="bg-white border border-red-200 rounded px-2 py-1">save.dat / csave.dat / osave.dat</div>
+                    <div class="bg-white border border-red-200 rounded px-2 py-1">store_state_to_blob() raw</div>
+                    <div class="bg-white border border-red-200 rounded px-2 py-1">invalidate_saved_games()</div>
+                    <div class="bg-white border border-red-200 rounded px-2 py-1">steam_unlock_achievement()</div>
+                  </div>
+                </div>
+
+                <!-- Red Leakage Arrows -->
+                <div class="flex items-center justify-around py-1 text-red-600 text-xs font-mono">
+                  <span>↓ Deleting mod bricks save.dat</span>
+                  <span>↓ Modded runs pollute Steam feats</span>
+                </div>
+
+                <!-- Thin Implementation Rectangle -->
+                <div class="border border-slate-300 bg-stone-100 rounded p-3 text-center">
+                  <div class="text-xs uppercase tracking-wider font-semibold text-slate-700">Thin Pass-Through Implementation</div>
+                  <div class="text-[11px] text-stone-500 mt-0.5">SaveManager &amp; PlayerProfile write directly to global Steam/Home slots</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- AFTER -->
+            <div class="rounded-lg border border-stone-200 bg-stone-50/60 p-4 flex flex-col justify-between min-h-[340px]">
+              <div class="flex items-center justify-between mb-2">
+                <span class="text-xs uppercase tracking-wider font-semibold text-emerald-800">After · Narrow Interface, Deep Implementation</span>
+                <span class="text-[11px] text-stone-500">Loadout-scoped persistence</span>
+              </div>
+              <div class="rounded border border-stone-200 bg-white p-4 flex-1 flex flex-col justify-between items-center">
+                <!-- Short Narrow Interface -->
+                <div class="w-3/5 border-2 border-slate-800 bg-stone-100 rounded-t-lg px-3 py-2 text-center">
+                  <div class="text-[10px] uppercase tracking-widest text-stone-500">Narrow Interface</div>
+                  <div class="font-mono text-xs font-semibold text-slate-900">save_run · resume_run · record_feat</div>
+                </div>
+
+                <div class="w-full border-t-2 border-dashed border-slate-400"></div>
+
+                <!-- Tall Deep Implementation -->
+                <div class="w-full deep text-white rounded-b-lg border-2 border-slate-950 p-3.5 flex-1 flex flex-col justify-between mt-1">
+                  <div class="text-xs uppercase tracking-wider font-bold text-emerald-300">ModdedPersistence Module</div>
+                  <div class="space-y-1.5 text-[11px] text-slate-200">
+                    <div class="bg-slate-800/90 border border-slate-700 rounded px-2.5 py-1 flex justify-between">
+                      <span>Partition slots by loadout digest</span>
+                      <span class="font-mono text-emerald-300">mods/&lt;hash&gt;/save.dat</span>
+                    </div>
+                    <div class="bg-slate-800/90 border border-slate-700 rounded px-2.5 py-1 flex justify-between">
+                      <span>Pre-flight check missing/deleted mods</span>
+                      <span class="font-mono text-amber-300">Auto-enable prompt</span>
+                    </div>
+                    <div class="bg-slate-800/90 border border-slate-700 rounded px-2.5 py-1 flex justify-between">
+                      <span>Sandbox modded feats &amp; counters</span>
+                      <span class="font-mono text-sky-300">Steam sync gated</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-6 pt-2 border-t border-stone-100">
+            <div>
+              <h3 class="text-xs uppercase tracking-wider font-semibold text-stone-500 mb-1">Problem</h3>
+              <p class="text-sm text-slate-700">Updating or deleting a mod breaks raw <code class="font-mono text-xs">StateObject</code> blobs in global <code class="font-mono text-xs">save.dat</code> slots while modded runs leak straight into vanilla <code class="font-mono text-xs">PlayerProfile</code> and Steam achievements.</p>
+            </div>
+            <div>
+              <h3 class="text-xs uppercase tracking-wider font-semibold text-stone-500 mb-1">Solution</h3>
+              <p class="text-sm text-slate-700">Deepen <code class="font-mono text-xs">SaveManager</code> and <code class="font-mono text-xs">PlayerProfile</code> behind one persistence module that partitions slots by active mod digest, validates required manifests on resume, and gates Steam sync.</p>
+            </div>
+            <div>
+              <h3 class="text-xs uppercase tracking-wider font-semibold text-stone-500 mb-1">Wins</h3>
+              <ul class="text-sm text-slate-800 space-y-1 list-disc list-inside">
+                <li>Locality: slot isolation in one module</li>
+                <li>Mod deletes never corrupt vanilla saves</li>
+                <li>Steam feats stay gated behind seam</li>
+                <li>Two adapters test blobs without Steam</li>
+              </ul>
+            </div>
+          </div>
+        </article>
+
+        <!-- CANDIDATE 4 -->
+        <article id="candidate-4" class="bg-white rounded-xl border border-stone-200 shadow-sm p-6 md:p-8 space-y-6">
+          <div class="flex flex-wrap items-start justify-between gap-4">
+            <div class="space-y-2">
+              <div class="flex flex-wrap items-center gap-2">
+                <span class="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-900 border border-amber-300">Worth exploring</span>
+                <span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-stone-100 text-stone-700 border border-stone-300">ports &amp; adapters</span>
+              </div>
+              <h2 class="font-serif text-2xl text-slate-900">4. Gate Rollback Schema &amp; Co-op Handshake in a Mod Session Module</h2>
+            </div>
+            <span class="text-xs font-mono text-stone-400">#candidate-4</span>
+          </div>
+
+          <div class="bg-stone-50 border border-stone-200 rounded-lg px-4 py-3 font-mono text-sm text-slate-700 flex flex-wrap gap-x-4 gap-y-1">
+            <span>scripts/main.nut.bin</span>
+            <span>scripts/NetworkHandler.nut.bin</span>
+            <span>scripts/PredictionSlots.nut.bin</span>
+            <span>scripts/Replay.nut.bin</span>
+            <span>scripts/menu/LobbySubMenu.nut.bin</span>
+          </div>
+
+          <!-- Before / After Visual: Mermaid Flowcharts -->
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+            <!-- BEFORE -->
+            <div class="rounded-lg border border-stone-200 bg-stone-50/60 p-4 flex flex-col justify-between min-h-[340px]">
+              <div class="flex items-center justify-between mb-2">
+                <span class="text-xs uppercase tracking-wider font-semibold text-red-700">Before · Blind Rollback &amp; StateObject Lock</span>
+                <span class="text-[11px] text-stone-500">Immediate CRC desync on mismatch</span>
+              </div>
+              <div class="rounded border border-stone-200 bg-white p-2 flex-1 flex items-center justify-center overflow-hidden">
+                <pre class="mermaid w-full">
+flowchart TB
+  BOOT["main.nut: ~250 static<br/>register_state_class()"] -.leak.-> SYNC["NetworkHandler<br/>presynchronize / synchronize"]
+  LOBBY["LobbySubMenu<br/>(no mod metadata)"] --> SYNC
+  SYNC -.leak.-> PRED["PredictionSlots<br/>save_state / get_state_crc"]
+  PRED -.leak.-> ERR["Network Desync Popup /<br/>Blob Serializer Crash"]
+  REP["Replay.dat ('SAVE' + 'INPT')"] -.leak.-> ERR
+  classDef leak stroke:#dc2626,stroke-width:2px,color:#991b1b;
+  class BOOT,SYNC,PRED,ERR,REP leak
+                </pre>
+              </div>
+            </div>
+
+            <!-- AFTER -->
+            <div class="rounded-lg border border-stone-200 bg-stone-50/60 p-4 flex flex-col justify-between min-h-[340px]">
+              <div class="flex items-center justify-between mb-2">
+                <span class="text-xs uppercase tracking-wider font-semibold text-emerald-800">After · Deep Mod Session Handshake Module</span>
+                <span class="text-[11px] text-stone-500">Verified parity before tick 0</span>
+              </div>
+              <div class="rounded border border-stone-200 bg-white p-2 flex-1 flex items-center justify-center overflow-hidden">
+                <pre class="mermaid w-full">
+flowchart TB
+  CALLERS["LobbySubMenu · NetworkHandler · Replay"] --> MS["ModSession Module<br/>(digest verify · auto-align load order ·<br/>extension StateObject slot)"]
+  MS -.seam.-> T1["Steam / Socket Transport Adapter"]
+  MS -.seam.-> T2["In-Memory Loopback Adapter"]
+  classDef deepBox fill:#0f172a,stroke:#020617,stroke-width:3px,color:#ecfdf5;
+  classDef adapter fill:#f5f5f4,stroke:#57534e,stroke-dasharray: 4 4,color:#1c1917;
+  class MS deepBox
+  class T1,T2 adapter
+                </pre>
+              </div>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-6 pt-2 border-t border-stone-100">
+            <div>
+              <h3 class="text-xs uppercase tracking-wider font-semibold text-stone-500 mb-1">Problem</h3>
+              <p class="text-sm text-slate-700">Static <code class="font-mono text-xs">register_state_class</code> layouts and unverified <code class="font-mono text-xs">presynchronize</code> / <code class="font-mono text-xs">replay.dat</code> blobs trigger instant <code class="font-mono text-xs">state_crc</code> desyncs when peers run different mod sets.</p>
+            </div>
+            <div>
+              <h3 class="text-xs uppercase tracking-wider font-semibold text-stone-500 mb-1">Solution</h3>
+              <p class="text-sm text-slate-700">Introduce a deep <code class="font-mono text-xs">ModSession</code> module that packs mod state into a pre-registered <code class="font-mono text-xs">StateObject</code> slot, stamps digests into lobbies and replays, and aligns peer loadouts before join.</p>
+            </div>
+            <div>
+              <h3 class="text-xs uppercase tracking-wider font-semibold text-stone-500 mb-1">Wins</h3>
+              <ul class="text-sm text-slate-800 space-y-1 list-disc list-inside">
+                <li>Locality: schema and CRC stay aligned</li>
+                <li>Leverage: one handshake guards co-op, replays</li>
+                <li>Catches mod mismatch before rollback desync</li>
+                <li>Loopback adapter tests peer sync offline</li>
+              </ul>
+            </div>
+          </div>
+        </article>
+
+        <!-- CANDIDATE 5 -->
+        <article id="candidate-5" class="bg-white rounded-xl border border-stone-200 shadow-sm p-6 md:p-8 space-y-6">
+          <div class="flex flex-wrap items-start justify-between gap-4">
+            <div class="space-y-2">
+              <div class="flex flex-wrap items-center gap-2">
+                <span class="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-900 border border-amber-300">Worth exploring</span>
+                <span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-stone-100 text-stone-700 border border-stone-300">local-substitutable</span>
+              </div>
+              <h2 class="font-serif text-2xl text-slate-900">5. Mount a Native Virtual Mod Overlay &amp; Asset Seam</h2>
+            </div>
+            <span class="text-xs font-mono text-stone-400">#candidate-5</span>
+          </div>
+
+          <div class="bg-stone-50 border border-stone-200 rounded-lg px-4 py-3 font-mono text-sm text-slate-700 flex flex-wrap gap-x-4 gap-y-1">
+            <span>rampage_knights.exe</span>
+            <span>SDL2.dll (proxy seam)</span>
+            <span>boot.config</span>
+            <span>scripts/menu/GameMenu.nut.bin</span>
+            <span>data/temp.txt.bin</span>
+          </div>
+
+          <!-- Before / After Visual: Cross-Section Bands -->
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+            <!-- BEFORE -->
+            <div class="rounded-lg border border-stone-200 bg-stone-50/60 p-4 flex flex-col justify-between min-h-[340px]">
+              <div class="flex items-center justify-between mb-2">
+                <span class="text-xs uppercase tracking-wider font-semibold text-red-700">Before · Split Read/Write Paths &amp; .bin Lock</span>
+                <span class="text-[11px] text-stone-500">No texture/audio override seam</span>
+              </div>
+              <div class="rounded border border-stone-200 bg-white p-4 flex-1 flex flex-col justify-between space-y-2">
+                <div class="h-12 border-l-4 border-red-500 bg-stone-50 px-3 flex items-center justify-between rounded-r">
+                  <span class="text-xs uppercase tracking-wider font-semibold text-slate-800">System.run_script / load_defs</span>
+                  <span class="font-mono text-[11px] text-red-700">Reads install dir .bin only</span>
+                </div>
+                <div class="h-12 border-l-4 border-red-500 bg-stone-50 px-3 flex items-center justify-between rounded-r">
+                  <span class="text-xs uppercase tracking-wider font-semibold text-slate-800">def_texture / def_sound</span>
+                  <span class="font-mono text-[11px] text-red-700">Hardcoded data/*.png &amp; *.ogg</span>
+                </div>
+                <div class="h-12 border-l-4 border-red-500 bg-stone-50 px-3 flex items-center justify-between rounded-r">
+                  <span class="text-xs uppercase tracking-wider font-semibold text-slate-800">File / write_file_begin</span>
+                  <span class="font-mono text-[11px] text-red-700">Scoped to user: save dir, no dir scan</span>
+                </div>
+                <div class="h-12 border-l-4 border-red-500 bg-stone-50 px-3 flex items-center justify-between rounded-r">
+                  <span class="text-xs uppercase tracking-wider font-semibold text-slate-800">GameMenu temp.txt reload</span>
+                  <span class="font-mono text-[11px] text-red-700">Locked behind developer mode</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- AFTER -->
+            <div class="rounded-lg border border-stone-200 bg-stone-50/60 p-4 flex flex-col justify-between min-h-[340px]">
+              <div class="flex items-center justify-between mb-2">
+                <span class="text-xs uppercase tracking-wider font-semibold text-emerald-800">After · Consolidated Native Mod Overlay Seam</span>
+                <span class="text-[11px] text-stone-500">PE32 proxy DLL, zero .exe edits</span>
+              </div>
+              <div class="rounded border border-stone-200 bg-white p-4 flex-1 flex flex-col justify-between">
+                <div class="h-11 border border-slate-300 bg-stone-50 px-3 flex items-center justify-between rounded">
+                  <span class="text-xs uppercase tracking-wider font-semibold text-slate-800">Squirrel VM &amp; Asset Callers</span>
+                  <span class="font-mono text-[11px] text-slate-600">Mods.list · scaffold · write · delete</span>
+                </div>
+
+                <div class="border-t-2 border-dashed border-slate-400 my-2 relative">
+                  <span class="bg-white px-2 text-[10px] uppercase tracking-widest text-slate-500 absolute -top-2 left-3">Native Overlay Seam</span>
+                </div>
+
+                <div class="deep text-white rounded-lg border-2 border-slate-950 p-4 space-y-2 shadow-md">
+                  <div class="text-xs uppercase tracking-wider font-bold text-emerald-300">NativeModOverlay Module (PE32 Proxy)</div>
+                  <div class="text-xs text-slate-300 space-y-1 font-mono">
+                    <div>1. Priority resolve: user:mods/&lt;active&gt;/* → base data/ &amp; scripts/</div>
+                    <div>2. Plaintext .nut / .txt compile before .nut.bin / .txt.bin fallback</div>
+                    <div>3. Redirect CreateFileW for custom .png sprites &amp; BASS .ogg audio</div>
+                  </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-2 pt-2 text-center">
+                  <div class="border border-slate-400 bg-stone-50 rounded py-1.5 text-[11px] uppercase tracking-wider text-slate-800">Win32 Hook Adapter</div>
+                  <div class="border border-emerald-400 bg-emerald-50 rounded py-1.5 text-[11px] uppercase tracking-wider text-emerald-900">Temp-Dir Test Adapter</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-6 pt-2 border-t border-stone-100">
+            <div>
+              <h3 class="text-xs uppercase tracking-wider font-semibold text-stone-500 mb-1">Problem</h3>
+              <p class="text-sm text-slate-700">Native asset loaders read <code class="font-mono text-xs">data/*.png</code>, <code class="font-mono text-xs">*.ogg</code>, and <code class="font-mono text-xs">*.bin</code> straight from the install folder while Squirrel <code class="font-mono text-xs">File</code> writes lack directory enumeration in <code class="font-mono text-xs">user:Rampage Knights</code>.</p>
+            </div>
+            <div>
+              <h3 class="text-xs uppercase tracking-wider font-semibold text-stone-500 mb-1">Solution</h3>
+              <p class="text-sm text-slate-700">Place a deep native overlay module at the PE32 DLL seam (unsigned binary, CFG disabled) to overlay <code class="font-mono text-xs">user:Rampage Knights/mods/</code> paths and expose four directory CRUD verbs to Squirrel.</p>
+            </div>
+            <div>
+              <h3 class="text-xs uppercase tracking-wider font-semibold text-stone-500 mb-1">Wins</h3>
+              <ul class="text-sm text-slate-800 space-y-1 list-disc list-inside">
+                <li>Locality: path overlay behind one seam</li>
+                <li>Base .nut.bin files stay untouched</li>
+                <li>Interface shrinks to four file verbs</li>
+                <li>Stand-in adapter tests CRUD in memory</li>
+              </ul>
+            </div>
+          </div>
+        </article>
+
+      </section>
+
+      <!-- Top Recommendation -->
+      <section id="top-recommendation" class="pt-4">
+        <div class="deep text-white rounded-2xl border-2 border-slate-950 p-8 shadow-lg flex flex-col md:flex-row md:items-center md:justify-between gap-6">
+          <div class="space-y-2 max-w-3xl">
+            <p class="text-xs uppercase tracking-widest text-emerald-400 font-semibold">Top Recommendation · Start Here</p>
+            <h2 class="font-serif text-2xl md:text-3xl">Collapse Script &amp; Def Bootstrap into a Mod Catalog Module</h2>
+            <p class="text-sm text-slate-300">
+              Because the shipped Squirrel VM already embeds <code class="font-mono text-xs text-emerald-300">compilestring()</code> and atomic <code class="font-mono text-xs text-emerald-300">user:Rampage Knights</code> file storage, deepening the scattered bootstrap and <code class="font-mono text-xs text-emerald-300">g_*_defs</code> tables into one <code class="font-mono text-xs text-emerald-300">ModCatalog</code> module immediately unlocks working mod CRUD and gives the unified UI, save-slot isolation, and co-op handshake a single authoritative seam.
+            </p>
+          </div>
+          <a href="#candidate-1" class="shrink-0 inline-flex items-center px-5 py-3 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-semibold text-sm transition">
+            Jump to Candidate 1 ↑
+          </a>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

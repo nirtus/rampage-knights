@@ -1,0 +1,15 @@
+# Vanilla Rampage Knights binaries and root files
+/rampage_knights.exe
+/*.dll
+/boot.config
+/gamecontrollerdb.txt
+/readme.txt
+
+# Vanilla game data and compiled Squirrel bytecode
+/data/
+scripts/**/*.nut.bin
+
+# Runtime saves, checkpoints, and logs
+*.dat
+*.log
+/steam_appid.txt
