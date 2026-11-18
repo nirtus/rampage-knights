@@ -5,7 +5,7 @@ Blocked by: 01
 
 ## Context
 
-Because `.gitignore` ignores vanilla game files by default, Git alone will not notice if an ignored original game file (such as a file in `data/` or a `.nut.bin` file) is modified in-place. Per [`spec.md`](../spec.md), `tests/sync_vanilla_changes.mjs` and `.git/hooks/pre-commit` bridge this gap using `docs/vanilla-hashes.sha256`.
+Because `.gitignore` ignores vanilla game files by default, Git alone will not notice if an ignored original game file (such as an asset in `data/`, or a binary override intentionally departing from [ADR 0001](../../adr/0001-plaintext-squirrel-override-seam.md)) is modified in-place. Per [`spec.md`](../spec.md), `tests/sync_vanilla_changes.mjs` and `.git/hooks/pre-commit` bridge this gap using `docs/vanilla-hashes.sha256`.
 
 ## Deliverables
 

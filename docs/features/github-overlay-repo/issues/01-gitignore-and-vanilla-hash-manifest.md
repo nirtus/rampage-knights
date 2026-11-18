@@ -17,7 +17,7 @@ Per [`spec.md`](../spec.md), the GitHub repository (`origin/main`) must exclude 
    - `/readme.txt`
    - `/data/`
    - `scripts/**/*.nut.bin`
-   - Runtime saves and logs (`*.dat`, `*.log`, `steam_appid.txt`)
+   - **Mid-Run Save** files, checkpoints, and logs (`*.dat`, `*.log`, `steam_appid.txt`)
 2. **Generate `docs/vanilla-hashes.sha256`** containing `<sha256>  <relative-posix-path>` sorted lexicographically by path for all 1,123 original game files:
    - Root vanilla files (`SDL2.dll`, `bass.dll`, `boot.config`, `gamecontrollerdb.txt`, `rampage_knights.exe`, `readme.txt`, `steam_api.dll`)
    - All files under `data/**`

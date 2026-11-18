@@ -6,12 +6,14 @@ Publish only new or modified project/mod files to the GitHub repository (`https:
 1. Allowing players who own the game to install and update changes in-place inside their `Rampage Knights` directory (`git pull` or ZIP extraction).
 2. Automatically detecting and staging any original vanilla game file whose bytes differ from the shipped Steam baseline, and untracking it (`git rm --cached`) if reverted to vanilla.
 
+> **Relationship to ADR 0001**: [ADR 0001 (`0001-plaintext-squirrel-override-seam.md`)](../../adr/0001-plaintext-squirrel-override-seam.md) remains the default gameplay modding architecture (touch zero `.exe` or `.nut.bin` bytes via plain-text `scripts/preload.nut`). Where a maintainer intentionally departs from ADR 0001 (for example, editing a `data/` asset or overriding a binary file directly), the vanilla hash tracker ensures that override is captured rather than silently ignored by `.gitignore`.
+
 ---
 
 ## Architecture & Components
 
 ### 1. `.gitignore` (Ignore Vanilla by Default)
-Ignore all shipped *Rampage Knights* binaries, compiled scripts, assets, and runtime save files by default:
+Ignore all shipped *Rampage Knights* binaries, compiled scripts, assets, and **Mid-Run Save** files by default:
 - `/rampage_knights.exe`
 - `/*.dll`
 - `/boot.config`
@@ -19,7 +21,7 @@ Ignore all shipped *Rampage Knights* binaries, compiled scripts, assets, and run
 - `/readme.txt`
 - `/data/`
 - `scripts/**/*.nut.bin`
-- Runtime saves and logs (`*.dat`, `*.log`, `steam_appid.txt`)
+- **Mid-Run Save** files, checkpoints, and logs (`*.dat`, `*.log`, `steam_appid.txt`)
 
 New non-vanilla files (`scripts/**/*.nut`, `docs/**`, `tests/**`, `*.md`, `.gitignore`) remain un-ignored and appear in `git status` automatically.
 

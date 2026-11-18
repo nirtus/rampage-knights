@@ -51,50 +51,55 @@ function createTempOverlayRepo(t) {
   return { repoRoot, manifestPath };
 }
 
-test("Seam 1: syncVanillaChanges ignores untouched vanilla files and force-stages modified vanilla files", (t) => {
+test("Seam 1: syncVanillaChanges ignores untouched vanilla files, stages newly modified ones once, and skips already-staged ones", (t) => {
   const { repoRoot, manifestPath } = createTempOverlayRepo(t);
 
-  // Untouched baseline: neither ignored vanilla file is staged
-  const cleanResult = syncVanillaChanges({ repoRoot, manifestPath });
-  assert.deepEqual(cleanResult, { staged: [], untracked: [] });
+  assert.deepEqual(syncVanillaChanges({ repoRoot, manifestPath }), {
+    staged: [],
+    untracked: [],
+  });
   assert.equal(git(repoRoot, ["ls-files"]), "");
 
-  // Modify one ignored vanilla file on disk
   fs.writeFileSync(path.join(repoRoot, "data/gparams.txt.bin"), "abc-modded", "utf8");
 
-  const dirtyResult = syncVanillaChanges({ repoRoot, manifestPath });
-  assert.deepEqual(dirtyResult, { staged: ["data/gparams.txt.bin"], untracked: [] });
+  assert.deepEqual(syncVanillaChanges({ repoRoot, manifestPath }), {
+    staged: ["data/gparams.txt.bin"],
+    untracked: [],
+  });
   assert.equal(git(repoRoot, ["ls-files"]), "data/gparams.txt.bin");
+
+  // Re-running with no further edits does not re-stage or re-report the already-staged file
+  assert.deepEqual(syncVanillaChanges({ repoRoot, manifestPath }), {
+    staged: [],
+    untracked: [],
+  });
 });
 
 test("Seam 1: syncVanillaChanges untracks restored vanilla files while preserving them on disk", (t) => {
   const { repoRoot, manifestPath } = createTempOverlayRepo(t);
 
-  // Case A: Modified, committed, then reverted to baseline bytes
-  fs.writeFileSync(path.join(repoRoot, "data/gparams.txt.bin"), "abc-modded", "utf8");
-  syncVanillaChanges({ repoRoot, manifestPath });
-  git(repoRoot, ["commit", "-m", "Commit modded vanilla file"]);
-  assert.equal(git(repoRoot, ["ls-files"]), "data/gparams.txt.bin");
+  const verifyModifyAndRestore = (relPath, originalBytes, commitBeforeRestore) => {
+    fs.writeFileSync(path.join(repoRoot, relPath), `${originalBytes}-modded`, "utf8");
+    syncVanillaChanges({ repoRoot, manifestPath });
+    if (commitBeforeRestore) {
+      git(repoRoot, ["commit", "-m", `Commit modded ${relPath}`]);
+    }
+    assert.equal(git(repoRoot, ["ls-files"]), relPath);
 
-  fs.writeFileSync(path.join(repoRoot, "data/gparams.txt.bin"), "abc", "utf8");
-  const revertCommitted = syncVanillaChanges({ repoRoot, manifestPath });
-  assert.deepEqual(revertCommitted, { staged: [], untracked: ["data/gparams.txt.bin"] });
-  assert.equal(git(repoRoot, ["ls-files"]), "");
-  assert.equal(fs.readFileSync(path.join(repoRoot, "data/gparams.txt.bin"), "utf8"), "abc");
+    fs.writeFileSync(path.join(repoRoot, relPath), originalBytes, "utf8");
+    assert.deepEqual(syncVanillaChanges({ repoRoot, manifestPath }), {
+      staged: [],
+      untracked: [relPath],
+    });
+    assert.equal(git(repoRoot, ["ls-files"]), "");
+    assert.equal(fs.readFileSync(path.join(repoRoot, relPath), "utf8"), originalBytes);
+  };
 
-  // Case B: Modified and staged (uncommitted), then reverted to baseline bytes before commit
-  fs.writeFileSync(path.join(repoRoot, "scripts/World.nut.bin"), "hello-modded", "utf8");
-  syncVanillaChanges({ repoRoot, manifestPath });
-  assert.equal(git(repoRoot, ["ls-files"]), "scripts/World.nut.bin");
-
-  fs.writeFileSync(path.join(repoRoot, "scripts/World.nut.bin"), "hello", "utf8");
-  const revertStaged = syncVanillaChanges({ repoRoot, manifestPath });
-  assert.deepEqual(revertStaged, { staged: [], untracked: ["scripts/World.nut.bin"] });
-  assert.equal(git(repoRoot, ["ls-files"]), "");
-  assert.equal(fs.readFileSync(path.join(repoRoot, "scripts/World.nut.bin"), "utf8"), "hello");
+  verifyModifyAndRestore("data/gparams.txt.bin", "abc", true);
+  verifyModifyAndRestore("scripts/World.nut.bin", "hello", false);
 });
 
-test("Seam 2: pre-commit hook automatically commits modified vanilla files and untracks reverted ones", (t) => {
+test("Seam 2: pre-commit hook and CLI work from subdirectories and commit/untrack vanilla changes", (t) => {
   const { repoRoot } = createTempOverlayRepo(t);
 
   fs.mkdirSync(path.join(repoRoot, "tests"), { recursive: true });
@@ -103,20 +108,32 @@ test("Seam 2: pre-commit hook automatically commits modified vanilla files and u
     path.join(repoRoot, "tests/sync_vanilla_changes.mjs"),
   );
 
-  installPreCommitHook(repoRoot);
+  // CLI invoked from a subdirectory resolves repoRoot and installs hook cleanly
+  execFileSync("node", ["../tests/sync_vanilla_changes.mjs", "--install-hook"], {
+    cwd: path.join(repoRoot, "docs"),
+    encoding: "utf8",
+  });
 
-  // Initial overlay commit: untouched vanilla files must not enter HEAD tree
   git(repoRoot, ["add", "."]);
   git(repoRoot, ["commit", "-m", "Initial overlay"]);
-  const initialTree = git(repoRoot, ["ls-tree", "-r", "--name-only", "HEAD"]).split("\n");
-  assert.deepEqual(initialTree, [
+  assert.deepEqual(git(repoRoot, ["ls-tree", "-r", "--name-only", "HEAD"]).split("\n"), [
     ".gitignore",
     "docs/vanilla-hashes.sha256",
     "tests/sync_vanilla_changes.mjs",
   ]);
 
-  // Case 1: Modify an ignored vanilla file alongside a staged project change -> committed in one step
-  // Also run under minimal PATH to verify non-interactive shell node discovery
+  // Case 1: Solo vanilla edit + `git commit` stages via pre-commit (then commits on retry)
+  fs.writeFileSync(path.join(repoRoot, "scripts/World.nut.bin"), "hello-solo", "utf8");
+  assert.throws(() => git(repoRoot, ["commit", "-m", "Solo vanilla edit"]));
+  assert.equal(git(repoRoot, ["diff", "--cached", "--name-only"]), "scripts/World.nut.bin");
+  git(repoRoot, ["commit", "-m", "Solo vanilla edit"]);
+  assert.ok(
+    git(repoRoot, ["ls-tree", "-r", "--name-only", "HEAD"])
+      .split("\n")
+      .includes("scripts/World.nut.bin"),
+  );
+
+  // Case 2: Vanilla edit alongside staged mod change under minimal PATH -> committed in one step
   fs.writeFileSync(path.join(repoRoot, "scripts/preload.nut"), "// mod v1\n", "utf8");
   fs.writeFileSync(path.join(repoRoot, "data/gparams.txt.bin"), "abc-custom", "utf8");
   git(repoRoot, ["add", "."]);
@@ -130,14 +147,15 @@ test("Seam 2: pre-commit hook automatically commits modified vanilla files and u
   assert.ok(moddedTree.includes("scripts/preload.nut"));
   assert.ok(moddedTree.includes("data/gparams.txt.bin"));
 
-  // Case 2: Revert tracked vanilla file back to original bytes -> `git add . && git commit` untracks it in one step
+  // Case 3: Revert tracked vanilla files -> `git add . && git commit` untracks them while keeping disk files
   fs.writeFileSync(path.join(repoRoot, "data/gparams.txt.bin"), "abc", "utf8");
+  fs.writeFileSync(path.join(repoRoot, "scripts/World.nut.bin"), "hello", "utf8");
   git(repoRoot, ["add", "."]);
-  git(repoRoot, ["commit", "-m", "Revert vanilla gparams to baseline"]);
+  git(repoRoot, ["commit", "-m", "Revert vanilla files to baseline"]);
 
   const revertedTree = git(repoRoot, ["ls-tree", "-r", "--name-only", "HEAD"]).split("\n");
   assert.ok(!revertedTree.includes("data/gparams.txt.bin"));
+  assert.ok(!revertedTree.includes("scripts/World.nut.bin"));
   assert.equal(fs.readFileSync(path.join(repoRoot, "data/gparams.txt.bin"), "utf8"), "abc");
+  assert.equal(fs.readFileSync(path.join(repoRoot, "scripts/World.nut.bin"), "utf8"), "hello");
 });
-
-

@@ -9,7 +9,7 @@
 /data/
 scripts/**/*.nut.bin
 
-# Runtime saves, checkpoints, and logs
+# Mid-Run Save files, checkpoints, and logs
 *.dat
 *.log
-/steam_appid.txt
+steam_appid.txt

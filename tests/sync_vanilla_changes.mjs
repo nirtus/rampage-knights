@@ -4,6 +4,8 @@ import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
+const DEFAULT_REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+
 function parseManifest(manifestText) {
   const entries = [];
   for (const rawLine of manifestText.split(/\r?\n/)) {
@@ -22,8 +24,8 @@ function sha256File(filePath) {
   return crypto.createHash("sha256").update(fs.readFileSync(filePath)).digest("hex");
 }
 
-function getTrackedFiles(repoRoot) {
-  const out = execFileSync("git", ["ls-files", "-z"], {
+function gitNullSeparatedSet(repoRoot, args) {
+  const out = execFileSync("git", args, {
     cwd: repoRoot,
     encoding: "utf8",
   });
@@ -31,11 +33,12 @@ function getTrackedFiles(repoRoot) {
 }
 
 export function syncVanillaChanges({
-  repoRoot = process.cwd(),
+  repoRoot = DEFAULT_REPO_ROOT,
   manifestPath = path.join(repoRoot, "docs/vanilla-hashes.sha256"),
 } = {}) {
   const entries = parseManifest(fs.readFileSync(manifestPath, "utf8"));
-  const trackedFiles = getTrackedFiles(repoRoot);
+  const trackedFiles = gitNullSeparatedSet(repoRoot, ["ls-files", "-z"]);
+  const unstagedDirtyFiles = gitNullSeparatedSet(repoRoot, ["diff", "--name-only", "-z"]);
   const staged = [];
   const untracked = [];
 
@@ -44,7 +47,9 @@ export function syncVanillaChanges({
     if (!fs.existsSync(fullPath)) continue;
     const actualSha256 = sha256File(fullPath);
     if (actualSha256 !== expectedSha256) {
-      staged.push(relativePath);
+      if (!trackedFiles.has(relativePath) || unstagedDirtyFiles.has(relativePath)) {
+        staged.push(relativePath);
+      }
     } else if (trackedFiles.has(relativePath)) {
       untracked.push(relativePath);
     }
@@ -63,30 +68,28 @@ export function syncVanillaChanges({
   return { staged, untracked };
 }
 
+const FIND_NODE_SNIPPET =
+  'if ! command -v node >/dev/null 2>&1 && [ -d "$HOME/.nvm/versions/node" ]; then ' +
+  'NVM_BIN=$(ls -1d "$HOME"/.nvm/versions/node/*/bin 2>/dev/null | sort -V | tail -n 1); ' +
+  '[ -n "$NVM_BIN" ] && PATH="$NVM_BIN:$PATH" && export PATH; fi';
+
 const PRE_COMMIT_HOOK_SCRIPT = `#!/bin/sh
 set -e
 
-if ! command -v node >/dev/null 2>&1; then
-  if [ -d "$HOME/.nvm/versions/node" ]; then
-    NVM_BIN=$(ls -1d "$HOME"/.nvm/versions/node/*/bin 2>/dev/null | tail -n 1)
-    if [ -n "$NVM_BIN" ]; then
-      PATH="$NVM_BIN:$PATH"
-      export PATH
-    fi
-  fi
-fi
+${FIND_NODE_SNIPPET}
 
 if command -v node >/dev/null 2>&1; then
   exec node tests/sync_vanilla_changes.mjs
 elif command -v wsl.exe >/dev/null 2>&1; then
-  exec wsl.exe sh -c 'export PATH="$(ls -1d "$HOME"/.nvm/versions/node/*/bin 2>/dev/null | tail -n 1):$PATH"; node tests/sync_vanilla_changes.mjs'
+  WSLENV="GIT_INDEX_FILE/p\${WSLENV:+:\$WSLENV}" export WSLENV
+  exec wsl.exe sh -c '${FIND_NODE_SNIPPET}; exec node tests/sync_vanilla_changes.mjs'
 else
   echo "pre-commit: node is required to run tests/sync_vanilla_changes.mjs" >&2
   exit 1
 fi
 `;
 
-export function installPreCommitHook(repoRoot = process.cwd()) {
+export function installPreCommitHook(repoRoot = DEFAULT_REPO_ROOT) {
   const hookDir = path.join(repoRoot, ".git", "hooks");
   fs.mkdirSync(hookDir, { recursive: true });
   const hookPath = path.join(hookDir, "pre-commit");
@@ -101,7 +104,7 @@ const isMain =
 
 if (isMain) {
   if (process.argv.includes("--install-hook")) {
-    const hookPath = installPreCommitHook(process.cwd());
+    const hookPath = installPreCommitHook();
     console.log(`Installed pre-commit hook at ${hookPath}`);
   }
 
@@ -117,4 +120,3 @@ if (isMain) {
     }
   }
 }
-

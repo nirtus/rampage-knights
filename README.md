@@ -36,7 +36,7 @@ Delete `scripts/preload.nut` (and restore any tracked vanilla overrides via Stea
 
 ## Maintainer Workflow
 
-Original game files (`rampage_knights.exe`, `*.dll`, `data/`, `scripts/**/*.nut.bin`) are ignored by `.gitignore` and hashed in `docs/vanilla-hashes.sha256`:
+Per [ADR 0001](docs/adr/0001-plaintext-squirrel-override-seam.md), gameplay mods should use plain-text Squirrel (`scripts/preload.nut`) rather than patching `rampage_knights.exe` or `scripts/*.nut.bin`. If a non-Squirrel asset or deliberate vanilla override is ever modified (intentionally departing from ADR 0001's zero-binary-touch default), `docs/vanilla-hashes.sha256` ensures the change is tracked automatically:
 
 - **New files** (e.g., `scripts/*.nut`, `docs/**`, `tests/**`) are tracked by Git automatically.
 - **Modified original game files** are automatically detected against `docs/vanilla-hashes.sha256` and staged (`git add -f`) by `.git/hooks/pre-commit` (or manually via `node tests/sync_vanilla_changes.mjs`). If you edit *only* an ignored vanilla file with no other staged changes, run `node tests/sync_vanilla_changes.mjs` before `git commit` (or run `git commit` twice once the hook stages it).
