@@ -2,6 +2,8 @@
 
 All project-related files live under this repository root. Features, specs, maps, and issues live under `docs/features/<feature-slug>/`.
 
+Update `README.md` (`## Included Features`) with every new feature implementation before committing.
+
 ## Agent skills
 
 ### Issue tracker

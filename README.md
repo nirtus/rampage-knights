@@ -6,6 +6,7 @@ This repository contains gameplay mods, scripts, tests, and documentation that o
 
 - **Campaign Carryover Loop** ([`spec.md`](docs/features/campaign-carryover/spec.md)): Clearing the final floor of a 10-floor Campaign carries your full **Hero Loadout** (weapon, gear, consumables, **Passive Modifiers**, familiars, coins, souls) and **Run Stats** (health, extra lives, stat offsets, blessings, curses, diseases) directly into floor 0 (`forest`) of a newly seeded Campaign at the same mode and difficulty, with replenished loot pools that filter already-owned items.
 - **Alchemist Reset in Starting Camp** ([`04-alchemist-camp-character-reset.md`](docs/features/campaign-carryover/issues/04-alchemist-camp-character-reset.md)): Talk to Tim the Alchemist in the Starting Camp to reset your full character, only your gear & items, or only your stats & status effects at any time.
+- **Endless Dungeon Difficulty Respawn & Return to Camp** ([`05-endless-dungeon-difficulty-respawn-and-camp-return.md`](docs/features/campaign-carryover/issues/05-endless-dungeon-difficulty-respawn-and-camp-return.md)): Preserves the difficulty selected in the Starting Camp across all Endless Dungeon floors (so Casual difficulty respawns at the latest floor checkpoint on death and heals between floors, while Normal/Hard/Insane use permadeath), and adds a **"Return to Camp"** button to the Pause Menu (`Esc` / Start) while in Endless Dungeon to return to the Starting Camp with your current **Hero Loadout** and **Run Stats** intact.
 
 ## How Players Install & Update
 
