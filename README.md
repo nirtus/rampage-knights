@@ -1,20 +1,22 @@
-# Rampage Knights — Mod & Community Update Overlay
+# Rampage Knights — Community Mod Overlay
 
-This repository contains gameplay mods, scripts, tests, and documentation that overlay on top of an existing **Rampage Knights** installation without redistributing untouched original game assets.
+## Disclaimer
+
+This is an unofficial community mod overlay for **Rampage Knights**. It does not redistribute original game assets and requires a legitimate copy of the game installed via Steam. Use at your own risk; backing up your save files before installing is recommended.
 
 ## Included Features
 
-- **Campaign Carryover Loop** ([`spec.md`](docs/features/campaign-carryover/spec.md)): Clearing the final floor of a 10-floor Campaign carries your full **Hero Loadout** (weapon, gear, consumables, **Passive Modifiers**, familiars, coins, souls) and **Run Stats** (health, extra lives, stat offsets, blessings, curses, diseases) directly into floor 0 (`forest`) of a newly seeded Campaign at the same mode and difficulty, with replenished loot pools that filter already-owned items.
-- **Alchemist Reset in Starting Camp** ([`04-alchemist-camp-character-reset.md`](docs/features/campaign-carryover/issues/04-alchemist-camp-character-reset.md)): Talk to Tim the Alchemist in the Starting Camp to reset your full character, only your gear & items, or only your stats & status effects at any time.
-- **Endless Dungeon Difficulty Respawn & Return to Camp** ([`05-endless-dungeon-difficulty-respawn-and-camp-return.md`](docs/features/campaign-carryover/issues/05-endless-dungeon-difficulty-respawn-and-camp-return.md)): Preserves the difficulty selected in the Starting Camp across all Endless Dungeon floors (so Casual difficulty respawns at the latest floor checkpoint on death and heals between floors, while Normal/Hard/Insane use permadeath), and adds a **"Return to Camp"** button to the Pause Menu (`Esc` / Start) while in Endless Dungeon to return to the Starting Camp with your current **Hero Loadout** and **Run Stats** intact.
+- **Campaign Carryover Loop**: Beating the final boss starts a new Campaign run on the same difficulty while keeping all of your equipped gear, items, passive perks, familiars, coins, souls, and stats. Loot pools refresh and filter out items you already own.
+- **Alchemist Character Reset**: Talk to Tim the Alchemist in the Starting Camp to reset your entire character, only your gear and items, or only your stats and curses/blessings.
+- **Endless Dungeon Difficulty & Return to Camp**: Endless Dungeon now respects the difficulty chosen in the Starting Camp (Casual allows checkpoint respawns and healing between floors; Normal and above use permadeath). Also adds a **"Return to Camp"** option to the pause menu to bring your current loadout and stats back to camp.
 
-## How Players Install & Update
+## Installation & Uninstallation
 
-You must already own **Rampage Knights** installed via Steam (typically `.../SteamLibrary/steamapps/common/Rampage Knights`).
+Requires **Rampage Knights** installed via Steam (typically `.../SteamLibrary/steamapps/common/Rampage Knights`).
 
-### Option 1: Git In-Place Updater (Recommended)
+### Install (Option 1: Git — Recommended)
 
-Open a terminal / PowerShell inside your `Rampage Knights` installation folder and run this one-time setup:
+Open a terminal or PowerShell inside your `Rampage Knights` installation folder and run:
 
 ```bash
 git init
@@ -23,28 +25,14 @@ git fetch origin
 git checkout -f -t origin/main
 ```
 
-Whenever new changes are published, update your game with:
+To update later, run `git pull` in the same folder.
 
-```bash
-git pull
-```
-
-### Option 2: Manual ZIP Update
+### Install (Option 2: Manual ZIP)
 
 1. Click **Code → Download ZIP** on GitHub.
-2. Extract the archive contents directly into your `Rampage Knights` installation folder, overwriting existing mod files when prompted.
+2. Extract the contents directly into your `Rampage Knights` installation folder, overwriting files if prompted.
 
-### Reverting to Vanilla
+### Uninstall
 
-Delete `scripts/preload.nut` (and restore any tracked vanilla overrides via Steam's *Verify integrity of game files*).
-
----
-
-## Maintainer Workflow
-
-Per [ADR 0001](docs/adr/0001-plaintext-squirrel-override-seam.md), gameplay mods should use plain-text Squirrel (`scripts/preload.nut`) rather than patching `rampage_knights.exe` or `scripts/*.nut.bin`. If a non-Squirrel asset or deliberate vanilla override is ever modified (intentionally departing from ADR 0001's zero-binary-touch default), `docs/vanilla-hashes.sha256` ensures the change is tracked automatically:
-
-- **New files** (e.g., `scripts/*.nut`, `docs/**`, `tests/**`) are tracked by Git automatically.
-- **Modified original game files** are automatically detected against `docs/vanilla-hashes.sha256` and staged (`git add -f`) by `.git/hooks/pre-commit` (or manually via `node tests/sync_vanilla_changes.mjs`). If you edit *only* an ignored vanilla file with no other staged changes, run `node tests/sync_vanilla_changes.mjs` before `git commit` (or run `git commit` twice once the hook stages it).
-- **Reverted original game files** that match their original hash in `docs/vanilla-hashes.sha256` are automatically untracked from Git (`git rm --cached`) while remaining on disk.
-- **Fresh clones**: run `node tests/sync_vanilla_changes.mjs --install-hook` once to install `.git/hooks/pre-commit`.
+1. Delete `scripts/preload.nut` from your `Rampage Knights` folder.
+2. *(Optional)* Remove the `.git`, `docs`, and `tests` folders, or run **Verify integrity of game files** in Steam.
